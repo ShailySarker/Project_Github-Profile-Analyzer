@@ -3,6 +3,8 @@ import { useState } from "react";
 import { UsernameInput } from "./Components/UsernameInput";
 import { RepoList } from "./Components/RepoList";
 import { CommitsChart } from "./Components/CommitsChart";
+import { SkeletonRepoList } from "@/components/shared/SkeletonRepoList";
+import { SkeletonCommitsChart } from "@/components/shared/SkeletonCommitsChart";
 
 const groupCommitsByDay = (commits: Commit[]) => {
     const counts: Record<string, number> = {};
@@ -17,40 +19,46 @@ const Home = () => {
     const [repos, setRepos] = useState<Repo[]>([]);
     const [commitsPerDay, setCommitsPerDay] = useState<{ date: string; count: number }[]>([]);
     const [loading, setLoading] = useState(false);
-
+    const githubToken = import.meta.env.VITE_GITHUB_TOKEN;
     const fetchRepos = async (username: string) => {
         setLoading(true);
         try {
-            const repoRes = await fetch(`https://api.github.com/users/${username}/repos`);
-            const repoData: Repo[] = await repoRes.json();
-            setRepos(repoData);
-
-            // Fetch commits from all repos in parallel
-            const commitData: Commit[] = [];
-            const commitPromises = repoData.map((repo) =>
-                fetch(`https://api.github.com/repos/${username}/${repo?.name}/commits?per_page=100`).then(
-                    (res) => res.json()
-                )
-            );
-            const commitsArray = await Promise.all(commitPromises);
-            commitsArray.flat().forEach((c: Commit) => {
-                if (c?.commit?.author?.date) commitData.push(c);
-            });
-
-            const grouped = groupCommitsByDay(commitData);
-            setCommitsPerDay(grouped);
+          const headers = {
+            Authorization: `token ${githubToken}`,
+          };
+      
+          const repoRes = await fetch(`https://api.github.com/users/${username}/repos`, { headers });
+          const repoData: Repo[] = await repoRes.json();
+          setRepos(repoData);
+      
+          const commitData: Commit[] = [];
+          const commitPromises = repoData.map((repo) =>
+            fetch(`https://api.github.com/repos/${username}/${repo?.name}/commits?per_page=100`, { headers }).then(
+              (res) => res.json()
+            )
+          );
+      
+          const commitsArray = await Promise.all(commitPromises);
+          commitsArray.flat().forEach((c: Commit) => {
+            if (c?.commit?.author?.date) commitData.push(c);
+          });
+      
+          const grouped = groupCommitsByDay(commitData);
+          setCommitsPerDay(grouped);
         } catch (err) {
-            console.error(err);
+          console.error(err);
         } finally {
-            setLoading(false);
+          setLoading(false);
         }
-    };
+      };
+      
 
     return (
         <div className="p-4 max-w-3xl mx-auto min-h-screen">
             <UsernameInput onSearch={fetchRepos} />
-            {loading ? <p>Loading...</p> : <RepoList repos={repos} />}
-            {commitsPerDay?.length > 0 && <CommitsChart commitsPerDay={commitsPerDay} />}
+            {loading ? <SkeletonRepoList /> : <RepoList repos={repos} />}
+            {loading && <SkeletonCommitsChart />}
+            {!loading && commitsPerDay?.length > 0 && <CommitsChart commitsPerDay={commitsPerDay} />}
         </div>
     );
 };
